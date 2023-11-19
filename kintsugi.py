@@ -460,6 +460,7 @@ class VesuviusKintsugi:
             delta = 1 if delta > 0 else -1
             self.z_index = max(0, min(self.z_index + delta, self.voxel_data.shape[2] - 1))
             self.update_display_slice()
+            self.update_info_display()
 
     def zoom(self, delta):
         zoom_amount = 0.1  # Adjust the zoom sensitivity as needed
