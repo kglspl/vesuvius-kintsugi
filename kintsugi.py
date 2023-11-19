@@ -2,7 +2,7 @@ import tkinter as tk
 from tkinter import filedialog, PhotoImage, ttk
 from PIL import Image, ImageTk
 import numpy as np
-import zarr
+import h5py
 from collections import deque
 import threading
 import math
@@ -10,12 +10,15 @@ import os
 import sys
 
 class VesuviusKintsugi:
+    _voxel_data_xy = None
+
     def __init__(self):
         self.overlay_alpha = 255
         self.barrier_mask = None  # New mask to act as a barrier for flood fill
         self.editing_barrier = False  # False for editing label, True for editing barrier
         self.max_propagation_steps = 100  # Default maximum propagation steps
         self.show_barrier = True
+        self.data_file = None
         self.voxel_data = None
         self.photo_img = None
         self.th_layer = 0
@@ -38,28 +41,68 @@ class VesuviusKintsugi:
         self.mask_data = None
         self.show_mask = True  # Default to showing the mask
         self.show_image = True
-        self.init_ui()
+        # self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230702185753/20230702185753.ppm.4.h5')
 
-    def load_data(self):
-        # Ask the user to select a directory containing Zarr data
-        dir_path = filedialog.askdirectory(title="Select Zarr Directory")
-        if dir_path:
+        data_stride = 4
+        self.image_position_x = 3000 // data_stride
+        self.image_position_y = 6600 // data_stride
+        self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.4.h5')
+
+        self.init_ui()
+        self.on_exit()
+
+
+    def load_data(self, file_path=None):
+        # Ask the user to select a directory containing H5FS data
+        if not file_path:
+            file_path = filedialog.askdirectory(title="Select H5FS File")
+        if file_path:
             try:
-                # Load the Zarr data into the voxel_data attribute
-                self.voxel_data = np.array(zarr.open(dir_path, mode='r'))
-                self.mask_data = np.zeros_like(self.voxel_data)
+                # Load the H5 data into the voxel_data attribute
+                print("Opening H5 file:", file_path)
+                self.data_file = h5py.File(file_path, 'r')
+                dataset_name, dataset_shape, dataset_type, dataset_chunks = self._h5_get_first_dataset_info(self.data_file['/'])
+                print("Opening dataset:", dataset_name, dataset_shape, dataset_type, dataset_chunks)
+                if dataset_type != np.uint16:
+                    raise Exception("Don't know how to display this dataset dtype, sorry")
+                self.dataset = self.data_file.require_dataset(dataset_name, shape=dataset_shape, dtype=dataset_type, chunks=dataset_chunks)
+                if self.dataset.shape[2] > 100:
+                    raise Exception(f"Careful - z is {self.dataset.shape[2]}, which is too big to comfortably put in memory. Bailing out.")
+
+                # ASSUMPTION: dataset axes are x, y, z (in that order). This is true for datasets generated with generate_surface().
+
+                # Load debugging data to test UI without using external data sources:
+                # self.dataset = (np.random.rand(5000, 2000, 20) * 0xffff).astype(np.uint16)
+                # self.image_position_x = 0
+                # self.image_position_y = 0
+
+                self.mask_data = np.zeros(shape=(self.dataset.shape[0], self.dataset.shape[1]))  # axes: x, y
+                print('mask shape', self.mask_data.shape)
                 self.barrier_mask = np.zeros_like(self.voxel_data)
                 self.z_index = 0
                 if self.voxel_data is not None:
                     self.threshold = [10 for _ in range(self.voxel_data.shape[0])]
                 self.update_display_slice()
-                self.file_name = os.path.basename(dir_path)
+                self.file_name = os.path.basename(file_path)
                 self.root.title(f"Vesuvius Kintsugi - {self.file_name}")
                 self.bucket_layer_slider.configure(from_=0, to=self.voxel_data.shape[0] - 1)
                 self.bucket_layer_slider.set(0)
                 self.update_log(f"Data loaded successfully.")
             except Exception as e:
                 self.update_log(f"Error loading data: {e}")
+
+    def on_exit(self):
+        if self.data_file:
+            print("Closing H5 file.")
+            self.data_file.close()
+
+    # butchered from: https://stackoverflow.com/a/53340677
+    def _h5_get_first_dataset_info(self, obj):
+        if type(obj) in [h5py._hl.group.Group,h5py._hl.files.File]:
+            for key in obj.keys():
+                return self._h5_get_first_dataset_info(obj[key])
+        elif type(obj)==h5py._hl.dataset.Dataset:
+            return obj.name, obj.shape, obj.dtype, obj.chunks
 
     def load_mask(self):
         if self.voxel_data is None:
@@ -204,8 +247,10 @@ class VesuviusKintsugi:
         if self.drag_start_x is not None and self.drag_start_y is not None:
             dx = event.x - self.drag_start_x
             dy = event.y - self.drag_start_y
-            self.image_position_x += dx
-            self.image_position_y += dy
+            self.image_position_x -= dx
+            self.image_position_y -= dy
+            self.image_position_x = min(max(self.image_position_x, 0), self.dataset.shape[0])
+            self.image_position_y = min(max(self.image_position_y, 0), self.dataset.shape[1])
             self.update_display_slice()
             self.drag_start_x, self.drag_start_y = event.x, event.y
 
@@ -227,55 +272,76 @@ class VesuviusKintsugi:
         return image.resize((zoomed_width, zoomed_height), Image.Resampling.NEAREST)
 
     def update_display_slice(self):
-        if self.voxel_data is not None:
-            target_width_xy = self.canvas.winfo_width()
-            target_height_xy = self.canvas.winfo_height()
+        if self.dataset is None:
+            return
 
-            # Convert the current slice to an RGBA image
-            if self.show_image:
-                img = Image.fromarray(self.voxel_data[self.z_index, :, :].astype('uint16')).convert('RGBA')
-            else:
-                img = Image.fromarray(np.zeros_like(self.voxel_data[self.z_index, :, :]).astype('uint16')).convert('RGBA')
+        canvas_width = self.canvas.winfo_width()
+        canvas_height = self.canvas.winfo_height()
+        if canvas_width <= 1 or canvas_height <= 1:
+            print("Canvas not yet initialized, can't update display slice")
+            return
 
-            # Only overlay the mask if show_mask is True
-            if self.mask_data is not None and self.show_mask:
-                mask = np.uint8(self.mask_data[self.z_index, :, :] * self.overlay_alpha)
-                yellow = np.zeros_like(mask, dtype=np.uint8)
-                yellow[:, :] = 255  # Yellow color
-                mask_img = Image.fromarray(np.stack([yellow, yellow, np.zeros_like(mask), mask], axis=-1), 'RGBA')
+        needed_data_width, needed_data_height = math.ceil(canvas_width / self.zoom_level), math.ceil(canvas_height / self.zoom_level)
+        x0, y0 = self.image_position_x, self.image_position_y
+        # print('x0, y0:', x0, y0)
 
-                # Overlay the mask on the original image
-                img = Image.alpha_composite(img, mask_img)
+        # Fetch needed data from our dataset
+        if self.show_image:
+            # print('ccc', x0, y0)
+            # Initialize voxel data as needed, but always take only the visible x/y area and the whole z, for faster scroll action:
+            if self._voxel_data_xy != (x0, y0):
+                self._voxel_data_xy = (x0, y0)
+                self.voxel_data = self.dataset[
+                    x0:x0 + needed_data_width,
+                    y0:y0 + needed_data_height,
+                    :,
+                ] / 256  # xyz
 
-            if self.barrier_mask is not None and self.show_barrier:
-                barrier = np.uint8(self.barrier_mask[self.z_index, :, :] * self.overlay_alpha)
-                red = np.zeros_like(barrier, dtype=np.uint8)
-                red[:, :] = 255  # Red color
-                barrier_img = Image.fromarray(np.stack([red, np.zeros_like(barrier), np.zeros_like(barrier), barrier], axis=-1), 'RGBA')
+            img = Image.fromarray((self.voxel_data[:, :, self.z_index]).astype('uint16').swapaxes(0, 1)).convert('RGBA')
+            # print('img shape', np.array(img).shape)
+        else:
+            img = Image.fromarray(np.zeros(shape=(1, needed_data_width, needed_data_height)).astype('uint16')).convert('RGBA')
+        # print(np.array(img).shape)
 
-                # Overlay the barrier mask on the original image
-                img = Image.alpha_composite(img, barrier_img)
+        # # Only overlay the mask if show_mask is True
+        # if self.mask_data is not None and self.show_mask:
+        #     mask = np.uint8(self.mask_data[x0:x0+needed_data_width, y0:y0+needed_data_height] * self.overlay_alpha)
+        #     yellow = np.zeros_like(mask, dtype=np.uint8)
+        #     yellow[:, :] = 255  # Yellow color
+        #     mask_img = Image.fromarray(np.stack([yellow, yellow, np.zeros_like(mask), mask], axis=-1).swapaxes(0, 1), 'RGBA')
 
-            # Resize the image with aspect ratio
-            img = self.resize_with_aspect(img, target_width_xy, target_height_xy, zoom=self.zoom_level)
+        #     # Overlay the mask on the original image
+        #     img = Image.alpha_composite(img, mask_img)
 
-            # Convert back to a format that can be displayed in Tkinter
-            self.resized_img = img.convert('RGB')
-            self.photo_img = ImageTk.PhotoImage(image=self.resized_img)
-            self.canvas.create_image(self.image_position_x, self.image_position_y, anchor=tk.NW, image=self.photo_img)
-            self.canvas.tag_raise(self.z_slice_text)
-            self.canvas.tag_raise(self.cursor_pos_text)
+        # if self.barrier_mask is not None and self.show_barrier:
+        #     barrier = np.uint8(self.barrier_mask[self.z_index, :, :] * self.overlay_alpha)
+        #     red = np.zeros_like(barrier, dtype=np.uint8)
+        #     red[:, :] = 255  # Red color
+        #     barrier_img = Image.fromarray(np.stack([red, np.zeros_like(barrier), np.zeros_like(barrier), barrier], axis=-1), 'RGBA')
+
+        #     # Overlay the barrier mask on the original image
+        #     img = Image.alpha_composite(img, barrier_img)
+
+        # Resize the image with aspect ratio
+        img = self.resize_with_aspect(img, canvas_width, canvas_height, zoom=self.zoom_level)
+
+        # Convert back to a format that can be displayed in Tkinter
+        self.resized_img = img.convert('RGB')
+        self.photo_img = ImageTk.PhotoImage(image=self.resized_img)
+        self.canvas.create_image(0, 0, anchor=tk.NW, image=self.photo_img)
+        self.canvas.tag_raise(self.z_slice_text)
+        self.canvas.tag_raise(self.zoom_text)
+        self.canvas.tag_raise(self.cursor_pos_text)
 
     def update_info_display(self):
         self.canvas.itemconfigure(self.z_slice_text, text=f"Z-Slice: {self.z_index}")
+        self.canvas.itemconfigure(self.zoom_text, text=f"Zoom: {self.zoom_level:.2f}")
         if self.click_coordinates:
             try:
                 _, cursor_y, cursor_x = self.calculate_image_coordinates(self.click_coordinates)
             except:
                 cursor_x, cursor_y = 0, 0
             self.canvas.itemconfigure(self.cursor_pos_text, text=f"Cursor Position: ({cursor_x}, {cursor_y})")
-
-
 
     def on_canvas_click(self, event):
         self.save_state()
@@ -303,7 +369,7 @@ class VesuviusKintsugi:
             # Handle unexpected input types
             raise ValueError("Input must be a tuple or an event object")
         if self.voxel_data is not None:
-            original_image_height, original_image_width = self.voxel_data[self.z_index].shape
+            original_image_height, original_image_width = self.voxel_data[:, :, self.z_index].shape
 
             # Dimensions of the image at the current zoom level
             zoomed_width = original_image_width * self.zoom_level
@@ -327,11 +393,15 @@ class VesuviusKintsugi:
             return self.z_index, img_y, img_x
 
     def color_pixel(self, img_coords):
-        z_index, center_y, center_x = img_coords
+        z_index, canvas_center_y, canvas_center_x = img_coords
+        # Left top corner is at image_position_x, image_position_y, and we have the center in canvas coords
+        center_x, center_y = canvas_center_x + self.image_position_x, canvas_center_y + self.image_position_y
+        print('center:', center_x*4, center_y*4)
+
         if self.voxel_data is not None:
             # Calculate the square bounds of the circle
             min_x = max(0, center_x - self.pencil_size)
-            max_x = min(self.voxel_data.shape[2] - 1, center_x + self.pencil_size)
+            max_x = min(self.voxel_data.shape[0] - 1, center_x + self.pencil_size)
             min_y = max(0, center_y - self.pencil_size)
             max_y = min(self.voxel_data.shape[1] - 1, center_y + self.pencil_size)
 
@@ -343,7 +413,7 @@ class VesuviusKintsugi:
                 for x in range(min_x, max_x + 1):
                     # Check if the pixel is within the circle's radius
                     if math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2) <= self.pencil_size:
-                            target_mask[z_index, y, x] = mask_value
+                        target_mask[x, y] = mask_value
             self.update_display_slice()
 
 
@@ -389,7 +459,7 @@ class VesuviusKintsugi:
         if self.voxel_data is not None:
             # Update the z_index based on scroll direction
             delta = 1 if delta > 0 else -1
-            self.z_index = max(0, min(self.z_index + delta, self.voxel_data.shape[0] - 1))
+            self.z_index = max(0, min(self.z_index + delta, self.voxel_data.shape[2] - 1))
             self.update_display_slice()
 
     def zoom(self, delta):
@@ -643,8 +713,8 @@ Created by Dr. Giorgio Angelotti, Vesuvius Kintsugi is designed for efficient 3D
         self.canvas.pack(fill='both', expand=True)
 
         self.z_slice_text = self.canvas.create_text(10, 10, anchor=tk.NW, text=f"Z-Slice: {self.z_index}", fill="red")
-
-        self.cursor_pos_text = self.canvas.create_text(10, 30, anchor=tk.NW, text="Cursor Position: (0, 0)", fill="red")
+        self.zoom_text = self.canvas.create_text(10, 30, anchor=tk.NW, text=f"Zoom: {self.zoom_level:.2f}", fill="red")
+        self.cursor_pos_text = self.canvas.create_text(10, 50, anchor=tk.NW, text="Cursor Position: (0, 0)", fill="red")
 
 
         # Bind event handlers
@@ -742,6 +812,10 @@ Created by Dr. Giorgio Angelotti, Vesuvius Kintsugi is designed for efficient 3D
         log_scrollbar = tk.Scrollbar(log_frame, command=self.log_text.yview)
         log_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         self.log_text['yscrollcommand'] = log_scrollbar.set
+
+        # Update display canvas size, then load data from dataset and display it
+        self.root.update_idletasks()
+        self.update_display_slice()
 
         self.root.mainloop()
 
