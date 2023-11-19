@@ -557,7 +557,7 @@ Created by Dr. Giorgio Angelotti, Vesuvius Kintsugi is designed for efficient 3D
         help_icon = PhotoImage(file='./icons/help-48.png')
         load_mask_icon = PhotoImage(file='./icons/ink-64.png')  # Replace with the actual path to icon
 
-        self.mode = tk.StringVar(value="bucket")
+        self.mode = tk.StringVar(value="pencil")
 
         # Add buttons with icons and tooltips to the toolbar frame
         load_button = ttk.Button(self.toolbar_frame, image=load_icon, command=self.load_data)
@@ -596,7 +596,7 @@ Created by Dr. Giorgio Angelotti, Vesuvius Kintsugi is designed for efficient 3D
         toggle_editing_button = ttk.Checkbutton(self.toolbar_frame, text="Edit Barrier", command=self.toggle_editing_mode, variable=self.editing_barrier_var)
         toggle_editing_button.pack(side=tk.LEFT, padx=5)
 
-        self.pencil_size_var = tk.StringVar(value="0")  # Default pencil size
+        self.pencil_size_var = tk.StringVar(value="10")  # Default pencil size
         pencil_size_label = ttk.Label(self.toolbar_frame, text="Pencil Size:")
         pencil_size_label.pack(side=tk.LEFT, padx=(10, 2))  # Add some padding for spacing
 
