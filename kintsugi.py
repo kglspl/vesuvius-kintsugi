@@ -27,7 +27,6 @@ class VesuviusKintsugi:
         self.pencil_size = 0
         self.click_coordinates = None
         self.threshold = [10]
-        self.log_text = None
         self.zoom_level = 1
         self.max_zoom_level = 15
         self.drag_start_x = None
@@ -87,9 +86,9 @@ class VesuviusKintsugi:
                 self.root.title(f"Vesuvius Kintsugi - {self.file_name}")
                 self.bucket_layer_slider.configure(from_=0, to=self.voxel_data.shape[0] - 1)
                 self.bucket_layer_slider.set(0)
-                self.update_log(f"Data loaded successfully.")
+                print(f"LOG: Data loaded successfully.")
             except Exception as e:
-                self.update_log(f"Error loading data: {e}")
+                print(f"LOG: Error loading data: {e}")
 
     def on_exit(self):
         if self.data_file:
@@ -106,7 +105,7 @@ class VesuviusKintsugi:
 
     def load_mask(self):
         if self.voxel_data is None:
-            self.update_log("No voxel data loaded. Load voxel data first.")
+            print("LOG: No voxel data loaded. Load voxel data first.")
             return
 
         # Prompt to save changes if there are any unsaved changes
@@ -125,11 +124,11 @@ class VesuviusKintsugi:
                 if loaded_mask.shape == self.voxel_data.shape:
                     self.mask_data = loaded_mask
                     self.update_display_slice()
-                    self.update_log("Label loaded successfully.")
+                    print("LOG: Label loaded successfully.")
                 else:
-                    self.update_log("Error: Label dimensions do not match the voxel data dimensions.")
+                    print("LOG: Error: Label dimensions do not match the voxel data dimensions.")
             except Exception as e:
-                self.update_log(f"Error loading mask: {e}")
+                print(f"LOG: Error loading mask: {e}")
 
     def save_image(self):
         if self.mask_data is not None:
@@ -149,11 +148,11 @@ class VesuviusKintsugi:
                 try:
                     # Save the Zarr array to the chosen file path
                     zarr.save_array(save_file_path, self.mask_data)
-                    self.update_log(f"Mask saved as Zarr in {save_file_path}")
+                    print(f"LOG: Mask saved as Zarr in {save_file_path}")
                 except Exception as e:
-                    self.update_log(f"Error saving mask as Zarr: {e}")
+                    print(f"LOG: Error saving mask as Zarr: {e}")
         else:
-            self.update_log("No mask data to save.")
+            print("LOG: No mask data to save.")
 
     def update_threshold_layer(self, layer):
         try:
@@ -166,17 +165,17 @@ class VesuviusKintsugi:
             # You may need to adjust this line depending on how the slider is named in your code
             self.bucket_threshold_slider.set(current_threshold)
 
-            self.update_log(f"Layer {self.th_layer} selected, current threshold is {current_threshold}.")
+            print(f"LOG: Layer {self.th_layer} selected, current threshold is {current_threshold}.")
         except ValueError:
-            self.update_log("Invalid layer value.")
+            print("LOG: Invalid layer value.")
 
     def update_threshold_value(self, val):
         try:
             self.threshold[self.th_layer] = int(float(val))
             self.bucket_threshold_var.set(f"{int(float(val))}")
-            self.update_log(f"Layer {self.th_layer} threshold set to {self.threshold[self.th_layer]}.")
+            print(f"LOG: Layer {self.th_layer} threshold set to {self.threshold[self.th_layer]}.")
         except ValueError:
-            self.update_log("Invalid threshold value.")
+            print("LOG: Invalid threshold value.")
 
     def threaded_flood_fill(self):
         if self.click_coordinates and self.voxel_data is not None:
@@ -184,7 +183,7 @@ class VesuviusKintsugi:
             thread = threading.Thread(target=self.flood_fill_3d, args=(self.click_coordinates,))
             thread.start()
         else:
-            self.update_log("No starting point or data for flood fill.")
+            print("LOG: No starting point or data for flood fill.")
 
     def flood_fill_3d(self, start_coord):
         self.flood_fill_active = True
@@ -218,11 +217,11 @@ class VesuviusKintsugi:
                 self.root.after(1, self.update_display_slice)
         if self.flood_fill_active == True:
             self.flood_fill_active = False
-            self.update_log("Flood fill ended.")
+            print("LOG: Flood fill ended.")
 
     def stop_flood_fill(self):
         self.flood_fill_active = False
-        self.update_log("Flood fill stopped.")
+        print("LOG: Flood fill stopped.")
 
     def save_state(self):
         # Save the current state of the image before modifying it
@@ -235,9 +234,9 @@ class VesuviusKintsugi:
         if self.history:
             self.voxel_data, self.mask_data = self.history.pop()
             self.update_display_slice()
-            self.update_log("Last action undone.")
+            print("LOG: Last action undone.")
         else:
-            self.update_log("No more actions to undo.")
+            print("LOG: No more actions to undo.")
 
     def on_canvas_press(self, event):
         self.drag_start_x = event.x
@@ -348,11 +347,11 @@ class VesuviusKintsugi:
         img_coords = self.calculate_image_coordinates(event)
         if self.mode.get() == "bucket":
             if self.flood_fill_active == True:
-                self.update_log("Last flood fill hasn't finished yet.")
+                print("LOG: Last flood fill hasn't finished yet.")
             else:
                 # Assuming the flood fill functionality
                 self.click_coordinates = img_coords
-                self.update_log("Starting flood fill...")
+                print("LOG: Starting flood fill...")
                 self.threaded_flood_fill()  # Assuming threaded_flood_fill is implemented for non-blocking UI
         elif self.mode.get() == "pencil":
             # Assuming the pencil (pixel editing) functionality
@@ -420,7 +419,7 @@ class VesuviusKintsugi:
     def update_pencil_size(self, val):
         self.pencil_size = int(float(val))
         self.pencil_size_var.set(f"{self.pencil_size}")
-        self.update_log(f"Pencil size set to {self.pencil_size}")
+        print(f"LOG: Pencil size set to {self.pencil_size}")
 
     def update_pencil_cursor(self, event):
         # Remove the old cursor representation
@@ -477,7 +476,7 @@ class VesuviusKintsugi:
         self.show_mask_var.set(self.show_mask)
         # Update the display to reflect the new state
         self.update_display_slice()
-        self.update_log(f"Label {'shown' if self.show_mask else 'hidden'}.\n")
+        print(f"LOG: Label {'shown' if self.show_mask else 'hidden'}.\n")
 
     def toggle_barrier(self):
         # Toggle the state
@@ -486,7 +485,7 @@ class VesuviusKintsugi:
         self.show_barrier_var.set(self.show_barrier)
         # Update the display to reflect the new state
         self.update_display_slice()
-        self.update_log(f"Barrier {'shown' if self.show_barrier else 'hidden'}.\n")
+        print(f"LOG: Barrier {'shown' if self.show_barrier else 'hidden'}.\n")
 
     def toggle_image(self):
         # Toggle the state
@@ -495,12 +494,12 @@ class VesuviusKintsugi:
         self.show_image_var.set(self.show_image)
         # Update the display to reflect the new state
         self.update_display_slice()
-        self.update_log(f"Image {'shown' if self.show_image else 'hidden'}.\n")
+        print(f"LOG: Image {'shown' if self.show_image else 'hidden'}.\n")
 
     def toggle_editing_mode(self):
         # Toggle between editing label and barrier
         self.editing_barrier = not self.editing_barrier
-        self.update_log(f"Editing {'Barrier' if self.editing_barrier else 'Label'}")
+        print(f"LOG: Editing {'Barrier' if self.editing_barrier else 'Label'}")
 
     def update_alpha(self, val):
         self.overlay_alpha = int(float(val))
@@ -564,14 +563,7 @@ Created by Dr. Giorgio Angelotti, Vesuvius Kintsugi is designed for efficient 3D
     def update_max_propagation(self, val):
         self.max_propagation_steps = int(float(val))
         self.max_propagation_var.set(f"{self.max_propagation_steps}")
-        self.update_log(f"Max Propagation Steps set to {self.max_propagation_steps}")
-
-    def update_log(self, message):
-        if self.log_text is not None:
-            self.log_text.insert(tk.END, message + "\n")
-            self.log_text.see(tk.END)
-        else:
-            print(f"Log not ready: {message}")
+        print(f"LOG: Max Propagation Steps set to {self.max_propagation_steps}")
 
     @staticmethod
     def create_tooltip(widget, text):
@@ -803,15 +795,6 @@ Created by Dr. Giorgio Angelotti, Vesuvius Kintsugi is designed for efficient 3D
         # Create a frame for the log text area and scrollbar
         log_frame = tk.Frame(self.root)
         log_frame.pack(side=tk.BOTTOM, fill=tk.X)
-
-        # Create the log text widget
-        self.log_text = tk.Text(log_frame, height=4, width=50)
-        self.log_text.pack(side=tk.LEFT, fill=tk.X, expand=True)
-
-        # Create the scrollbar and associate it with the log text widget
-        log_scrollbar = tk.Scrollbar(log_frame, command=self.log_text.yview)
-        log_scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
-        self.log_text['yscrollcommand'] = log_scrollbar.set
 
         # Update display canvas size, then load data from dataset and display it
         self.root.update_idletasks()
