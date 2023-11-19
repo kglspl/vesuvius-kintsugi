@@ -74,7 +74,7 @@ class VesuviusKintsugi:
         # File dialog to select mask file
         mask_file_path = filedialog.askdirectory(
             title="Select Label Zarr File")
-        
+
 
         if mask_file_path:
             try:
@@ -121,7 +121,7 @@ class VesuviusKintsugi:
             current_threshold = self.threshold[self.th_layer]
             self.bucket_threshold_var.set(f"{current_threshold}")
             # You may need to adjust this line depending on how the slider is named in your code
-            self.bucket_threshold_slider.set(current_threshold)  
+            self.bucket_threshold_slider.set(current_threshold)
 
             self.update_log(f"Layer {self.th_layer} selected, current threshold is {current_threshold}.")
         except ValueError:
@@ -190,7 +190,7 @@ class VesuviusKintsugi:
 
     def undo_last_action(self):
         if self.history:
-            self.voxel_data, self.mask_data = self.history.pop() 
+            self.voxel_data, self.mask_data = self.history.pop()
             self.update_display_slice()
             self.update_log("Last action undone.")
         else:
@@ -325,7 +325,7 @@ class VesuviusKintsugi:
             #print(f"Clicked at: ({x}, {y}), Image Coords: ({img_x}, {img_y})")
 
             return self.z_index, img_y, img_x
-    
+
     def color_pixel(self, img_coords):
         z_index, center_y, center_x = img_coords
         if self.voxel_data is not None:
@@ -346,7 +346,7 @@ class VesuviusKintsugi:
                             target_mask[z_index, y, x] = mask_value
             self.update_display_slice()
 
-    
+
     def update_pencil_size(self, val):
         self.pencil_size = int(float(val))
         self.pencil_size_var.set(f"{self.pencil_size}")
@@ -367,7 +367,7 @@ class VesuviusKintsugi:
             self.pencil_cursor = self.canvas.create_oval(event.x - radius, event.y - radius, event.x + radius, event.y + radius, outline=color, width=2)
         self.click_coordinates = (self.z_index, event.y, event.x)
         self.update_info_display()
-            
+
     def scroll_or_zoom(self, event):
         # Adjust for different platforms
         ctrl_pressed = False
@@ -390,7 +390,6 @@ class VesuviusKintsugi:
             self.z_index = max(0, min(self.z_index + delta, self.voxel_data.shape[0] - 1))
             self.update_display_slice()
 
-    
     def zoom(self, event):
         zoom_amount = 0.1  # Adjust the zoom sensitivity as needed
         if event.delta > 0:
