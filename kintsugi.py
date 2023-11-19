@@ -24,15 +24,15 @@ class VesuviusKintsugi:
         self.th_layer = 0
         self.resized_img = None
         self.z_index = 0
-        self.pencil_size = 0
+        self.pencil_size = 20
         self.click_coordinates = None
         self.threshold = [10]
         self.zoom_level = 1
         self.max_zoom_level = 15
         self.drag_start_x = None
         self.drag_start_y = None
-        self.image_position_x = 0
-        self.image_position_y = 0
+        self.canvas_position_on_dataset_x = 0
+        self.canvas_position_on_dataset_y = 0
         self.pencil_cursor = None  # Reference to the circle representing the pencil size
         self.flood_fill_active = False  # Flag to control flood fill
         self.history = []  # List to store a limited history of image states
@@ -43,14 +43,14 @@ class VesuviusKintsugi:
         # self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230702185753/20230702185753.ppm.4.h5')
 
         data_stride = 2
-        self.image_position_x = 3000 // data_stride
-        self.image_position_y = 6600 // data_stride
+        self.canvas_position_on_dataset_x = 3000 // data_stride
+        self.canvas_position_on_dataset_y = 6600 // data_stride
         # self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.2.h5')
         self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.2.copy.h5')
 
         # data_stride = 4
-        # self.image_position_x = 3000 // data_stride
-        # self.image_position_y = 6600 // data_stride
+        # self.canvas_position_on_dataset_x = 3000 // data_stride
+        # self.canvas_position_on_dataset_y = 6600 // data_stride
         # self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.4.h5')
 
         self.init_ui()
@@ -78,8 +78,8 @@ class VesuviusKintsugi:
 
                 # Load debugging data to test UI without using external data sources:
                 # self.dataset = (np.random.rand(5000, 2000, 20) * 0xffff).astype(np.uint16)
-                # self.image_position_x = 0
-                # self.image_position_y = 0
+                # self.canvas_position_on_dataset_x = 0
+                # self.canvas_position_on_dataset_y = 0
 
                 self.mask_data = np.zeros(shape=(self.dataset.shape[0], self.dataset.shape[1]))  # axes: x, y
                 print('mask shape', self.mask_data.shape)
@@ -252,17 +252,17 @@ class VesuviusKintsugi:
         if self.drag_start_x is not None and self.drag_start_y is not None:
             dx = event.x - self.drag_start_x
             dy = event.y - self.drag_start_y
-            self.image_position_x -= dx
-            self.image_position_y -= dy
-            self.image_position_x = min(max(self.image_position_x, 0), self.dataset.shape[0])
-            self.image_position_y = min(max(self.image_position_y, 0), self.dataset.shape[1])
+            self.canvas_position_on_dataset_x -= dx
+            self.canvas_position_on_dataset_y -= dy
+            self.canvas_position_on_dataset_x = min(max(self.canvas_position_on_dataset_x, 0), self.dataset.shape[0])
+            self.canvas_position_on_dataset_y = min(max(self.canvas_position_on_dataset_y, 0), self.dataset.shape[1])
             self.update_display_slice()
             self.drag_start_x, self.drag_start_y = event.x, event.y
 
     def on_canvas_pencil_drag(self, event):
-        if self.mode.get() == "pencil" or self.mode.get() == "eraser":
-            self.save_state()
-            self.color_pixel(self.calculate_image_coordinates(event))
+        if self.mode.get() in ["pencil", "eraser"]:
+            # self.save_state()
+            self.color_pixel(event.x, event.y)
 
     def on_canvas_release(self, event):
         self.drag_start_x = None
@@ -287,7 +287,7 @@ class VesuviusKintsugi:
             return
 
         needed_data_width, needed_data_height = math.ceil(canvas_width / self.zoom_level), math.ceil(canvas_height / self.zoom_level)
-        x0, y0 = self.image_position_x, self.image_position_y
+        x0, y0 = self.canvas_position_on_dataset_x, self.canvas_position_on_dataset_y
         # print('x0, y0:', x0, y0)
 
         # Fetch needed data from our dataset
@@ -302,30 +302,25 @@ class VesuviusKintsugi:
                     :,
                 ] / 256  # xyz
 
-            img = Image.fromarray((self.voxel_data[:, :, self.z_index]).astype('uint16').swapaxes(0, 1)).convert('RGBA')
-            # print('img shape', np.array(img).shape)
+            img_array = (self.voxel_data[:, :, self.z_index]).astype('uint16')
         else:
-            img = Image.fromarray(np.zeros(shape=(1, needed_data_width, needed_data_height)).astype('uint16')).convert('RGBA')
-        # print(np.array(img).shape)
+            img_array = np.zeros(shape=(1, needed_data_width, needed_data_height)).astype('uint16')
 
-        # # Only overlay the mask if show_mask is True
-        # if self.mask_data is not None and self.show_mask:
-        #     mask = np.uint8(self.mask_data[x0:x0+needed_data_width, y0:y0+needed_data_height] * self.overlay_alpha)
-        #     yellow = np.zeros_like(mask, dtype=np.uint8)
-        #     yellow[:, :] = 255  # Yellow color
-        #     mask_img = Image.fromarray(np.stack([yellow, yellow, np.zeros_like(mask), mask], axis=-1).swapaxes(0, 1), 'RGBA')
+        img = Image.fromarray(img_array.swapaxes(0, 1)).convert('RGBA')
+        print('voxel data:', self.voxel_data.shape)
+        print('img shape:', img_array.shape)
 
-        #     # Overlay the mask on the original image
-        #     img = Image.alpha_composite(img, mask_img)
+        # Overlay the mask
+        if self.mask_data is not None and self.show_mask:
+            mask = self.mask_data[x0:x0+img_array.shape[0], y0:y0+img_array.shape[1]].astype(np.uint8) * self.overlay_alpha
+            # print('self.mask_data:', self.mask_data.shape)
+            print('mask:', mask.shape)
+            yellow = np.zeros_like(mask, dtype=np.uint8)
+            yellow[:, :] = 255  # Yellow color
+            mask_img = Image.fromarray(np.stack([yellow, yellow, np.zeros_like(mask), mask], axis=-1).swapaxes(0, 1), 'RGBA')
 
-        # if self.barrier_mask is not None and self.show_barrier:
-        #     barrier = np.uint8(self.barrier_mask[self.z_index, :, :] * self.overlay_alpha)
-        #     red = np.zeros_like(barrier, dtype=np.uint8)
-        #     red[:, :] = 255  # Red color
-        #     barrier_img = Image.fromarray(np.stack([red, np.zeros_like(barrier), np.zeros_like(barrier), barrier], axis=-1), 'RGBA')
-
-        #     # Overlay the barrier mask on the original image
-        #     img = Image.alpha_composite(img, barrier_img)
+            # Overlay the mask on the original image
+            img = Image.alpha_composite(img, mask_img)
 
         # Resize the image with aspect ratio
         img = self.resize_with_aspect(img, canvas_width, canvas_height, zoom=self.zoom_level)
@@ -349,27 +344,19 @@ class VesuviusKintsugi:
             self.canvas.itemconfigure(self.cursor_pos_text, text=f"Cursor Position: ({cursor_x}, {cursor_y})")
 
     def on_canvas_click(self, event):
+        if self.mode.get() != "pencil" and self.mode.get() != "eraser":
+            raise Exception('Only pencil or eraser, sorry')
+
         self.save_state()
-        img_coords = self.calculate_image_coordinates(event)
-        if self.mode.get() == "bucket":
-            if self.flood_fill_active == True:
-                print("LOG: Last flood fill hasn't finished yet.")
-            else:
-                # Assuming the flood fill functionality
-                self.click_coordinates = img_coords
-                print("LOG: Starting flood fill...")
-                self.threaded_flood_fill()  # Assuming threaded_flood_fill is implemented for non-blocking UI
-        elif self.mode.get() == "pencil":
-            # Assuming the pencil (pixel editing) functionality
-            self.color_pixel(img_coords)  # Assuming color_pixel is implemented
+        self.color_pixel(event.x, event.y)
 
     def calculate_image_coordinates(self, input):
         if input is None:
             return 0, 0, 0  # Default values
         if isinstance(input, tuple):
-                _, y, x = input
+            _, y, x = input
         elif hasattr(input, 'x') and hasattr(input, 'y'):
-                x, y = input.x, input.y
+            x, y = input.x, input.y
         else:
             # Handle unexpected input types
             raise ValueError("Input must be a tuple or an event object")
@@ -381,8 +368,8 @@ class VesuviusKintsugi:
             zoomed_height = original_image_height * self.zoom_level
 
             # Adjusting click position for panning
-            pan_adjusted_x = x - self.image_position_x
-            pan_adjusted_y = y - self.image_position_y
+            pan_adjusted_x = x - self.canvas_position_on_dataset_x
+            pan_adjusted_y = y - self.canvas_position_on_dataset_y
 
             # Calculate the position in the zoomed image
             zoomed_image_x = max(0, min(pan_adjusted_x, zoomed_width))
@@ -397,30 +384,30 @@ class VesuviusKintsugi:
 
             return self.z_index, img_y, img_x
 
-    def color_pixel(self, img_coords):
-        z_index, canvas_center_y, canvas_center_x = img_coords
-        # Left top corner is at image_position_x, image_position_y, and we have the center in canvas coords
-        center_x, center_y = canvas_center_x + self.image_position_x, canvas_center_y + self.image_position_y
-        print('center:', center_x*4, center_y*4)
+    def color_pixel(self, canvas_x, canvas_y):
+        # Left top corner is at canvas_position_on_dataset_x, canvas_position_on_dataset_y, and we have the center in canvas coords
+        center_dataset_x, center_dataset_y = self.coords_canvas_to_dataset(canvas_x, canvas_y)
 
-        if self.voxel_data is not None:
-            # Calculate the square bounds of the circle
-            min_x = max(0, center_x - self.pencil_size)
-            max_x = min(self.voxel_data.shape[0] - 1, center_x + self.pencil_size)
-            min_y = max(0, center_y - self.pencil_size)
-            max_y = min(self.voxel_data.shape[1] - 1, center_y + self.pencil_size)
+        if self.voxel_data is None:
+            print('No voxel data')
+            return
 
-        if self.mode.get() in ["pencil", "eraser"]:
-            # Decide which mask to edit based on editing_barrier flag
-            target_mask = self.barrier_mask if self.editing_barrier else self.mask_data
-            mask_value = 1 if self.mode.get() == "pencil" else 0
-            for y in range(min_y, max_y + 1):
-                for x in range(min_x, max_x + 1):
-                    # Check if the pixel is within the circle's radius
-                    if math.sqrt((x - center_x) ** 2 + (y - center_y) ** 2) <= self.pencil_size:
-                        target_mask[x, y] = mask_value
-            self.update_display_slice()
+        if self.mode.get() not in ["pencil", "eraser"]:
+            raise Exception('Only pencil or eraser, sorry')
 
+        # Calculate the square bounds of the circle
+        min_x = max(0, center_dataset_x - self.pencil_size)
+        max_x = min(self.dataset.shape[0] - 1, center_dataset_x + self.pencil_size)
+        min_y = max(0, center_dataset_y - self.pencil_size)
+        max_y = min(self.dataset.shape[1] - 1, center_dataset_y + self.pencil_size)
+
+        mask_value = 1 if self.mode.get() == "pencil" else 0
+        for y in range(min_y, max_y + 1):
+            for x in range(min_x, max_x + 1):
+                # Check if the pixel is within the circle's radius
+                if math.sqrt((x - center_dataset_x) ** 2 + (y - center_dataset_y) ** 2) <= self.pencil_size:
+                    self.mask_data[x, y] = mask_value
+        self.update_display_slice()
 
     def update_pencil_size(self, val):
         self.pencil_size = int(float(val))
@@ -808,6 +795,12 @@ Created by Dr. Giorgio Angelotti, Vesuvius Kintsugi is designed for efficient 3D
         self.update_display_slice()
 
         self.root.mainloop()
+
+    def coords_canvas_to_dataset(self, canvas_x, canvas_y):
+        zoom = self.zoom_level
+        dataset_x, dataset_y = round(canvas_x / zoom) + self.canvas_position_on_dataset_x, round(canvas_y / zoom) + self.canvas_position_on_dataset_y
+        return dataset_x, dataset_y
+
 
 if __name__ == "__main__":
     editor = VesuviusKintsugi()
