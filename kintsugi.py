@@ -42,10 +42,16 @@ class VesuviusKintsugi:
         self.show_image = True
         # self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230702185753/20230702185753.ppm.4.h5')
 
-        data_stride = 4
+        data_stride = 2
         self.image_position_x = 3000 // data_stride
         self.image_position_y = 6600 // data_stride
-        self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.4.h5')
+        # self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.2.h5')
+        self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.2.copy.h5')
+
+        # data_stride = 4
+        # self.image_position_x = 3000 // data_stride
+        # self.image_position_y = 6600 // data_stride
+        # self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.4.h5')
 
         self.init_ui()
         self.on_exit()
