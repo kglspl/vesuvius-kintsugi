@@ -339,7 +339,6 @@ class VesuviusKintsugi:
     def update_pencil_size(self, val):
         self.pencil_size = int(float(val))
         self.pencil_size_var.set(f"{self.pencil_size}")
-        print(f"LOG: Pencil size set to {self.pencil_size}")
 
     def update_pencil_cursor(self, event):
         # Remove the old cursor representation
@@ -526,11 +525,11 @@ Modified by kglspl.
         eraser_button.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(eraser_button, "Eraser Tool")
 
-        self.pencil_size_var = tk.StringVar(value="10")  # Default pencil size
+        self.pencil_size_var = tk.StringVar(value=str(self.pencil_size))  # Default pencil size
         pencil_size_label = ttk.Label(self.toolbar_frame, text="Pencil Size:")
         pencil_size_label.pack(side=tk.LEFT, padx=(10, 2))  # Add some padding for spacing
 
-        pencil_size_slider = ttk.Scale(self.toolbar_frame, from_=0, to=100, orient=tk.HORIZONTAL, command=self.update_pencil_size)
+        pencil_size_slider = ttk.Scale(self.toolbar_frame, from_=0, to=100, value=self.pencil_size, orient=tk.HORIZONTAL, command=self.update_pencil_size)
         pencil_size_slider.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(pencil_size_slider, "Adjust Pencil Size")
 
