@@ -22,7 +22,7 @@ class VesuviusKintsugi:
         self.z_index = 0
         self.pencil_size = 20
         self.click_coordinates = None
-        self.zoom_level = 1
+        self.zoom_level = 2.
         self.max_zoom_level = 15
         self.drag_start_x = None
         self.drag_start_y = None
@@ -415,7 +415,7 @@ class VesuviusKintsugi:
         self.show_mask_var.set(self.show_mask)
         # Update the display to reflect the new state
         self.update_display_slice()
-        print(f"LOG: Label {'shown' if self.show_mask else 'hidden'}.\n")
+        # print(f"LOG: Label {'shown' if self.show_mask else 'hidden'}.\n")
 
     def toggle_image(self):
         # Toggle the state
