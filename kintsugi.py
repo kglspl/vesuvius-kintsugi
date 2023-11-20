@@ -191,6 +191,11 @@ class VesuviusKintsugi:
         # print('event', event.x, event.y)
 
     def on_canvas_drag(self, event):
+        alt_pressed = event.state & 0x08
+        if not alt_pressed:
+            self.on_canvas_pencil_drag(event)
+            return
+
         if self.drag_start_x is not None and self.drag_start_y is not None:
             # print('event', event.x, event.y)
             dx = event.x - self.drag_start_x
@@ -377,14 +382,12 @@ class VesuviusKintsugi:
 
     def scroll_or_zoom(self, event):
         # Adjust for different platforms
-        ctrl_pressed = False
+        ctrl_pressed = event.state & 0x04
         if sys.platform.startswith('win'):
             # Windows
-            ctrl_pressed = event.state & 0x0004
             delta = event.delta
         elif sys.platform.startswith('linux') or sys.platform.startswith('darwin'):
             # Linux or macOS
-            ctrl_pressed = event.state & 4
             delta = 1 if event.num == 4 else -1
 
         if ctrl_pressed:
