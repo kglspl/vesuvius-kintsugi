@@ -30,7 +30,7 @@ class VesuviusKintsugi:
         self.canvas_position_on_dataset_y = 0
         self.pencil_cursor = None  # Reference to the circle representing the pencil size
         self.history = []  # List to store a limited history of image states
-        self.max_history_size = 3  # Maximum number of states to store
+        self.max_history_size = 0  # Maximum number of states to store
         self.mask_data = None
         self.show_mask = True  # Default to showing the mask
         self.show_image = True
@@ -153,7 +153,7 @@ class VesuviusKintsugi:
 
     def save_state(self):
         # Save the current state of the image before modifying it
-        if self.voxel_data is not None:
+        if self.voxel_data is not None and self.max_history_size > 0:
             if len(self.history) == self.max_history_size:
                 self.history.pop(0)  # Remove the oldest state
             self.history.append((self.voxel_data.copy(), self.mask_data.copy()))
