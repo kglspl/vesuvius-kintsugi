@@ -1,13 +1,13 @@
-import tkinter as tk
-from tkinter import filedialog, PhotoImage, ttk
-from PIL import Image, ImageTk
-import numpy as np
-import h5py
-from collections import deque
-import threading
 import math
 import os
 import sys
+
+import h5py
+import numpy as np
+from PIL import Image, ImageTk
+import tkinter as tk
+from tkinter import filedialog, PhotoImage, ttk
+
 
 class VesuviusKintsugi:
     _voxel_data_xy = None
@@ -34,17 +34,18 @@ class VesuviusKintsugi:
         self.mask_data = None
         self.show_mask = True  # Default to showing the mask
         self.show_image = True
+        self.default_masks_directory = '/src/kgl/assets/'
         # self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230702185753/20230702185753.ppm.4.h5')
 
-        data_stride = 2
-        self.canvas_position_on_dataset_x = 3000 // data_stride
-        self.canvas_position_on_dataset_y = 6600 // data_stride
+        self.data_stride = 2
+        self.canvas_position_on_dataset_x = 3000 // self.data_stride
+        self.canvas_position_on_dataset_y = 6600 // self.data_stride
         # self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.2.h5')
         self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.2.copy.h5')
 
-        # data_stride = 4
-        # self.canvas_position_on_dataset_x = 3000 // data_stride
-        # self.canvas_position_on_dataset_y = 6600 // data_stride
+        # self.data_stride = 4
+        # self.canvas_position_on_dataset_x = 3000 // self.data_stride
+        # self.canvas_position_on_dataset_y = 6600 // self.data_stride
         # self.load_data('/src/kgl/dl.ash2txt.org/full-scrolls/Scroll1.volpkg/paths/20230929220924/20230929220924.ppm.surface.4.h5')
 
         self.init_ui()
@@ -75,8 +76,8 @@ class VesuviusKintsugi:
                 # self.canvas_position_on_dataset_x = 0
                 # self.canvas_position_on_dataset_y = 0
 
-                self.mask_data = np.zeros(shape=(self.dataset.shape[0], self.dataset.shape[1]))  # axes: x, y
-                # print('mask shape', self.mask_data.shape)
+                self.mask_data = np.zeros(shape=(self.dataset.shape[0], self.dataset.shape[1]), dtype=np.uint8)  # axes: x, y
+                print('self.mask_data.shape', self.mask_data.shape, self.mask_data.dtype)
                 self.z_index = 0
                 self.update_display_slice()
                 self.file_name = os.path.basename(file_path)
@@ -111,45 +112,63 @@ class VesuviusKintsugi:
                 return
 
         # File dialog to select mask file
-        mask_file_path = filedialog.askdirectory(
-            title="Select Label Zarr File")
+        mask_filename = filedialog.askopenfilename(
+            initialdir=self.default_masks_directory,
+            title="Select Masks TIFF File",
+            filetypes=[("Mask TIFF files", "mask_*.tif")]
+        )
 
+        if not mask_filename:
+            print("LOG: Not loading mask data, cancelled.")
+            return
 
-        if mask_file_path:
-            try:
-                loaded_mask = np.array(zarr.open(mask_file_path, mode='r'))
-                if loaded_mask.shape == self.voxel_data.shape:
-                    self.mask_data = loaded_mask
-                    self.update_display_slice()
-                    print("LOG: Label loaded successfully.")
-                else:
-                    print("LOG: Error: Label dimensions do not match the voxel data dimensions.")
-            except Exception as e:
-                print(f"LOG: Error loading mask: {e}")
+        try:
+            im = Image.open(mask_filename)
+                # self.mask_data = np.zeros(shape=(self.dataset.shape[0], self.dataset.shape[1]))  # axes: x, y
+            print('im.size', im.size)
+            im = im.resize((self.dataset.shape[0], self.dataset.shape[1]), Image.NEAREST)
+            self.mask_data = (np.array(im, dtype=np.uint8) / 255).T.astype(np.uint8)
+            print('self.mask_data.shape', self.mask_data.shape, self.mask_data.dtype)
+            print('self.dataset.shape', self.dataset.shape)
 
-    def save_image(self):
-        if self.mask_data is not None:
-            # Construct the default file name for saving
-            base_name = os.path.splitext(os.path.basename(self.file_name))[0]
-            default_save_file_name = f"{base_name}_label.zarr"
-            parent_directory = os.path.join(self.file_name, os.pardir)
-            # Open the file dialog with the proposed file name
-            save_file_path = filedialog.asksaveasfilename(
-                initialdir=parent_directory,
-                title="Select Directory to Save Mask Zarr",
-                initialfile=default_save_file_name,
-                filetypes=[("Zarr files", "*.zarr")]
-            )
+        except Exception as e:
+            print(f"LOG: Error loading mask: {e}")
 
-            if save_file_path:
-                try:
-                    # Save the Zarr array to the chosen file path
-                    zarr.save_array(save_file_path, self.mask_data)
-                    print(f"LOG: Mask saved as Zarr in {save_file_path}")
-                except Exception as e:
-                    print(f"LOG: Error saving mask as Zarr: {e}")
-        else:
+    def save_mask(self):
+        if self.mask_data is None:
             print("LOG: No mask data to save.")
+            return
+
+        # Construct the default file name for saving
+        # base_name = os.path.splitext(os.path.basename(self.file_name))[0]
+        # default_save_file_name = f"mask_{base_name}.tif"
+        # Open the file dialog with the proposed file name
+        save_file_path = filedialog.asksaveasfilename(
+            initialdir=self.default_masks_directory,
+            title="Select File to Save Mask to",
+            initialfile='mask_xxx.tif',
+            filetypes=[("Mask TIFF files", "mask_*.tif")]
+        )
+
+        if not save_file_path:
+            print("LOG: Not saving mask data, cancelled.")
+            return
+
+        try:
+            # Save the TIFF to the chosen file path
+            data = self.mask_data.astype(bool).astype(np.uint8).T * 255
+            print('data stats', data.min(), data.max(), data.mean())
+            # Depending on the file we used, data_stride could be 1, 2, 4,... However our masks are saved always with stride 4, so let's resize as needed:
+            shrink_factor = 4 // self.data_stride
+            print('data.shape', data.shape)
+            im = Image.fromarray(data, 'L')
+            # im.thumbnail((data.shape[1] // shrink_factor, data.shape[0] // shrink_factor), Image.Resampling.LANCZOS)
+            im.resize((data.shape[1] // shrink_factor, data.shape[0] // shrink_factor), Image.NEAREST)
+            im.save(save_file_path, 'TIFF')
+            print(f"LOG: Mask saved as TIFF in {save_file_path}")
+        except Exception as e:
+            print(f"LOG: Error saving mask: {e}")
+            raise
 
     def save_state(self):
         # Save the current state of the image before modifying it
@@ -503,7 +522,7 @@ Modified by kglspl.
         load_mask_button.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(load_mask_button, "Load Ink Label")
 
-        save_button = ttk.Button(self.toolbar_frame, image=save_icon, command=self.save_image)
+        save_button = ttk.Button(self.toolbar_frame, image=save_icon, command=self.save_mask)
         save_button.image = save_icon
         save_button.pack(side=tk.LEFT, padx=2)
         self.create_tooltip(save_button, "Save Zarr 3D Label")
@@ -574,7 +593,7 @@ Modified by kglspl.
         toggle_frame.pack(side=tk.BOTTOM, fill=tk.X, pady=2)
 
         # Create toggle buttons for mask and image visibility
-        toggle_mask_button = ttk.Checkbutton(toggle_frame, text="Toggle Label", command=self.toggle_mask, variable=self.show_mask_var)
+        toggle_mask_button = ttk.Checkbutton(toggle_frame, text="Toggle Mask", command=self.toggle_mask, variable=self.show_mask_var)
         toggle_mask_button.pack(side=tk.LEFT, padx=5, anchor='s')
 
         # Slider for adjusting the alpha (opacity)
